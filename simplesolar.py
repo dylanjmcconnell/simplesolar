@@ -49,7 +49,13 @@ class Position(object):
 
         return(360*(decimal_hour_time-12)/24)                      
 
-                                     
+    def sun_rise(self, UTS_datetime):
+        """Returns the hour angle at sunrise/sunset."""
+
+        delta = math.radians(declination_angle(UTS_datetime))
+        phi = math.radians(self.latitude)
+
+        return (math.degrees(math.acos(-math.tan(phi)*math.tan(delta))))                                     
                                      
                                      
                                      
@@ -69,6 +75,21 @@ class Position(object):
             return(None)
         else:
             return (math.degrees(math.acos(a)))
+        
+    def elevation_angle(self, UTS_datetime):
+        """Determines the elevation angle based on inputs. """
+
+        delta = math.radians(declination_angle(UTS_datetime))
+        phi = math.radians(self.latitude)
+        omega = math.radians(self.hour_angle(UTS_datetime))   
+
+        x = np.arcsin(np.cos(delta)*np.cos(phi)*np.cos(omega)+np.sin(delta)*np.sin(phi))
+
+        if x >= 0:
+            return (np.degrees(x))
+
+        else:
+            return (None)        
         
     def solar_azimuth(self, UTS_datetime):
 
@@ -98,30 +119,14 @@ class Position(object):
                 return (-x-180)
             else:
                 return 0
-            
-    def elevation_angle(self, UTS_datetime):
-        """Determines the elevation angle based on inputs. """
 
-        delta = math.radians(declination_angle(UTS_datetime))
-        phi = math.radians(self.latitude)
-        omega = math.radians(hour_angle(UTS_datetime, self.longitude))   
-
-        x = np.arcsin(np.cos(delta)*np.cos(phi)*np.cos(omega)+np.sin(delta)*np.sin(phi))
-
-        if x >= 0:
-            return (np.degrees(x))
-
-        else:
-            return (None)
-
-                                     
     def solar_azimuth_topocentric(self, UTS_datetime):
         """Returns the solar azimuth at a time/latitude. Eq. 7 page section 12.6 from 'Fundimentals of Renewable
                 Energy Processes' by Aldo Vieira da Rosa."""
 
         delta = math.radians(declination_angle(UTS_datetime))
         phi = math.radians(self.latitude)
-        omega = math.radians(hour_angle(self, UTS_datetime))    
+        omega = math.radians(self.hour_angle(UTS_datetime))    
 
         x = np.sin(omega)/(np.sin(phi)*np.cos(omega)-np.cos(phi)*np.tan(delta))
 
@@ -140,17 +145,65 @@ class Position(object):
         else:
             print("Something went wrong calculating solar azimuth.")
             return(None)        
+        
 
-                                     
-    def sun_rise(self, UTS_datetime):
-        """Returns the hour angle at sunrise/sunset."""
+    #Methods that produce dataframes containing data for plotting.
 
-        delta = math.radians(declination_angle(UTS_datetime))
-        phi = math.radians(self.latitude)
+    def getSolarTime(self, frequency):
+        """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding solar time at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
+        
+        date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['SolarTime'] = df.apply(lambda x: self.solar_time(x['date']), axis = 1)
+        return df
 
-        return (math.degrees(math.acos(-math.tan(phi)*math.tan(delta))))
+    def getHourAngle(self, frequency):
+        """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding hour angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
+        
+        date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['HourAngle'] = df.apply(lambda x: self.hour_angle(x['date']), axis = 1)
+        return df    
 
+    def getSunRise(self):
+        """Returns a dataframe with approximate hour angle at sunrise/sunset at the Position self for each day of the year."""
+        
+        date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= 'D', closed = 'left')
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['SunRise'] = df.apply(lambda x: self.zenith_angle(x['date']), axis = 1)
+        return df
+    
+    def getZenith(self, frequency):
+        """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding zenith angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
+        
+        date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['Zenith'] = df.apply(lambda x: self.zenith_angle(x['date']), axis = 1)
+        return df
 
+    def getElevation(self, frequency):
+        """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding elevation angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
+        date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['Elevation'] = df.apply(lambda x: self.elevation_angle(x['date']), axis = 1)
+        return df            
+        
+    def getAzimuth(self, frequency):
+        """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding azimuth angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
+        date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['Azimuth'] = df.apply(lambda x: self.solar_azimuth(x['date']), axis = 1)
+        return df
+    
+    
+    def getTopoAzimuth(self, frequency):
+        """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding topocentric azimuth angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
+        date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
+        df = pd.DataFrame(date_rng, columns=['date'])
+        df['Topocentric_Azimuth'] = df.apply(lambda x: self.solar_azimuth_topocentric(x['date']), axis = 1)
+        return df        
+    
+    
 class SolarOrientation(object):
     """Orientation and slope of the site."""
 
