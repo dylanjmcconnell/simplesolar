@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 def declination_angle(dt):
     """Angular position of the sun at solar noon by more accurate calculation. Eq. 1.6.1b Duffie and Beckman
     The angle between the rays of the Sun and the plane of the Earth's equator."""
-    n = (dt - datetime.datetime(dt.year,1,1)).total_seconds()/(24*3600)
-    B = (n-1)*2*math.pi/365
+    n = (dt - datetime.datetime(dt.year//4*4,1,1)).total_seconds()
+    B = (n-1)*2*math.pi/31556926
     b = 0.006918 - 0.399912*math.cos(B) + 0.070257*math.sin(B) - 0.006758*math.cos(2*B)+0.000907*math.sin(2*B)-0.002697*math.cos(3*B)+0.00148*math.sin(3*B)
     return (math.degrees(b))
 
