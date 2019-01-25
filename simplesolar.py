@@ -42,22 +42,22 @@ def julian(dt):
     return (32916.5 + 365*(year-1949)+(year-1949)//4+jdoy+tutc/24-51545)
 
 def gmst(julian, dt):
-    a = 6.697375+0.0657098242*julian+dt.utcoffset().seconds/3600
-    a = a - 24*a//24
+    a = 6.697375+0.0657098242*julian+dt.hour + dt.minute/60+dt.utcoffset().seconds/3600
+    a = a - 24*(a//24)
     if a < 0:
         a = a + 24
     return(a)
 
 def lmst(gmst, lon):
     a = gmst + lon/15
-    a = a - 24*a//24
+    a = a - 24*(a//24)
     if a < 0:
         a = a + 24
     return(a)
 
-def elev_angle(lat, decl, HA):
+def elev_angle(lat, decrad, hrrad):
     """Determines the elevation angle based on inputs. Radians"""
-    x = math.cos(decl)*math.cos(lat)*math.cos(HA)+math.sin(decl)*math.sin(lat)
+    x = math.sin(decrad)*math.sin(math.radians(lat)) + math.cos(decrad)*math.cos(math.radians(lat))*math.cos(hrrad)
     
     if (x>=-1) and (x<=1):
         return math.asin(x)
@@ -125,7 +125,7 @@ class EclipticCoordinate(object):
     def set_mnlong (self):
         """Returns the mean solar longitude in degrees (see NREL, Michalsky, Walraven)"""
         mnlong = 280.46+0.9856474*self.julian
-        mnlong = mnlong - 360*mnlong//360
+        mnlong = mnlong - 360*(mnlong//360)
         if mnlong < 0:
             mnlong = mnlong + 360
         return(mnlong)
@@ -133,29 +133,29 @@ class EclipticCoordinate(object):
     def set_mnanom (self):
         """Returns the mean solar anomaly in radians (see NREL, Michalsky, Walraven)"""
         mnanom = (357.528 + 0.9856003*self.julian)
-        mnanom = mnanom - 360*mnanom//360
+        mnanom = mnanom - 360*(mnanom//360)
         if mnanom < 0:
             mnanom = mnanom + 360
-
-        mnanom = math.radians(mnanom)
-        return(mnanom)
+            
+        return(math.radians(mnanom))
 
     def set_eclong(self):
         """Returns the ecliptic longitude in radians (see NREL, Michalsky, Walraven)"""
-        eclong = (self.mnlong+1.915*math.sin(self.mnanom)+0.02*math.sin(self.mnanom))
-        eclong = eclong-360*eclong//360
+        eclong = (self.mnlong+1.915*math.sin(self.mnanom)+0.02*math.sin(2*self.mnanom))
+        eclong = eclong-360*(eclong//360)
+        
         if eclong <0:
             eclong = eclong + 360
-        elclong = math.radians(eclong)
+        eclong = math.radians(eclong)
 
         return eclong
 
     def set_obleq(self):
         """Returns the obliquity angle in radians(see NREL, Michalsky, Walraven)."""
 
-        obleq = math.radians(23.439-0.0000004*self.julian)
+        obleq = 23.439-0.0000004*self.julian
 
-        return obleq
+        return math.radians(obleq)
 
     def set_ra(self):
         """Returns the right ascension"""
@@ -205,29 +205,32 @@ class SolarPosition(object):
 
     def set_hrrad(self, ra):
         """sets hour angle"""
+
         b = 15*math.pi/180*self.lmst-ra
-        if b<-math.pi:
-            return b+2*math.pi
-        if b>math.pi:
-            return (b-2*math.pi)
-        else:
-            return(b)
+
+        if (b < -math.pi):
+            b = b+ 2*math.pi
+            
+        elif b > math.pi:
+            b = b - (2*math.pi)
+        
+        return(b)
 
 
-def declination_angle(dt):
-    """Angular position of the sun at solar noon by more accurate calculation. Eq. 1.6.1b Duffie and Beckman
-    The angle between the rays of the Sun and the plane of the Earth's equator."""
+# def declination_angle(dt):
+#     """Angular position of the sun at solar noon by more accurate calculation. Eq. 1.6.1b Duffie and Beckman
+#     The angle between the rays of the Sun and the plane of the Earth's equator."""
     
-    n = (dt - datetime.datetime(dt.year//4*4,1,1)).total_seconds()
-    B = (n-1)*2*math.pi/31556926
-    b = 0.006918 - 0.399912*math.cos(B) + 0.070257*math.sin(B) - 0.006758*math.cos(2*B)+0.000907*math.sin(2*B)-0.002697*math.cos(3*B)+0.00148*math.sin(3*B)
+#     n = (dt - datetime.datetime(dt.year//4*4,1,1)).total_seconds()
+#     B = (n-1)*2*math.pi/31556926
+#     b = 0.006918 - 0.399912*math.cos(B) + 0.070257*math.sin(B) - 0.006758*math.cos(2*B)+0.000907*math.sin(2*B)-0.002697*math.cos(3*B)+0.00148*math.sin(3*B)
     
-    return (math.degrees(b))
+#     return (math.degrees(b))
 
-"""Classes are:
-        Positon - has lat long and all methods relating only to those attributes
-        Orientation - now redundant has only attributes relating to the slope and surface azimuth
-        SolarConfig - has position and orientation attributes and methods that require both (angle of incidence)""" 
+# """Classes are:
+#         Positon - has lat long and all methods relating only to those attributes
+#         Orientation - now redundant has only attributes relating to the slope and surface azimuth
+#         SolarConfig - has position and orientation attributes and methods that require both (angle of incidence)""" 
 
 
     
