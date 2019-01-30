@@ -4,11 +4,7 @@ import numpy as np
 import datetime
 import matplotlib.pyplot as plt
 
-#global variables
-daysinmonth = {"jan" : 31, "feb" : 28, "mar" : 31, "apr" : 30, "may" : 31, "jun" : 30, "jul" : 31, "aug" : 31, "sep" : 30, "oct" : 31, "nov" : 30, "dec" : 31}
-
-#Functions (typically not related to the position)
-
+#Functions related to time
   
 def julian(dt):
     """Finds the julian date based on the SAM Photovoltaic Model Techinical Reference Update, Paul Gilman, Aron Dobos, Nicholas DiOrio, Janine Freeman, Steven Janzou, and David Ryberg, of National Renewable Energy Laboratory. March 2018. After Michalsky 1988."""
@@ -41,32 +37,48 @@ def julian(dt):
         
     return (32916.5 + 365*(year-1949)+(year-1949)//4+jdoy+tutc/24-51545)
 
-def gmst(julian, dt):
-    a = 6.697375+0.0657098242*julian+dt.hour + dt.minute/60+dt.utcoffset().seconds/3600
+def Greenwich_mean_siderial_time(julian, dt):
+    """Calculates the siderial time from the julian and datetime (requires timezone (pytz)) (see NREL, Michalsky, Walraven)."""
+    a = 6.697375+0.0657098242*julian+(dt.hour + dt.minute/60-dt.utcoffset().seconds/3600)
     a = a - 24*(a//24)
     if a < 0:
         a = a + 24
     return(a)
 
-def lmst(gmst, lon):
-    a = gmst + lon/15
-    a = a - 24*(a//24)
-    if a < 0:
-        a = a + 24
-    return(a)
+#Functions relating to radiation
 
-def elev_angle(lat, decrad, hrrad):
-    """Determines the elevation angle based on inputs. Radians"""
-    x = math.sin(decrad)*math.sin(math.radians(lat)) + math.cos(decrad)*math.cos(math.radians(lat))*math.cos(hrrad)
+def mean_extraterrestrial_radiation(datetime):
+    """Extraterrestrial radiation incident on a plane normal to the radiation. Eq. 1.4.1b Duffie and Beckman."""
     
-    if (x>=-1) and (x<=1):
-        return math.asin(x)
-    else:
-        return np.sign(x)*math.pi/2
+    doy = datetime.dt.dayofyear+datetime.dt.hour/24+datetime.dt.minute/1440-datetime.dt.utcoffset().seconds/86400
 
-def refraction_corrected_elevation_angle(elrad):
-    """takes elevation angle in radians and corrects for refraction."""
-    alpha_0d = math.degrees(elrad)
+    if doy>365:
+        doy = doy-365
+    elif doy<0:
+        doy = doy+365
+            
+    B = (doy-1)*2*math.pi/365
+    return(1367*(1.000110 + 0.034221 * math.cos(B) + 0.001280 * math.sin(B)+ 0.000719 * math.cos(2*B)+0.000077*math.sin(2*B)))
+
+
+def incident_radiation(radiation, angle_of_incidence):
+    """Returns the radiation incident to a collector (this is actually just taking the incident component of the radiation and therefore will work for extraterrestrial or measured radiation)."""
+    if (0<angle_of_incidence<math.pi/2):
+        return radiation*math.cos(angle_of_incidence)
+    elif (angle_of_incidence == 0):
+        return radiation
+    else:
+        return 0
+
+
+    
+    
+#Functions relating to the angle of the sun
+
+def refraction_corrected_elevation(elevation_angle):
+    """Returns the refraction corrected elevation angle in radians. From Eq. 4.17 NREL"""
+    
+    alpha_0d = math.degrees(elevation_angle)
     if alpha_0d>-0.56:
         r = 3.51561*(0.1594+0.0196*alpha_0d +0.00002*alpha_0d**2)/(1+0.505*alpha_0d +0.0845*alpha_0d**2)
     elif alpha_0d<=-0.56:
@@ -74,29 +86,8 @@ def refraction_corrected_elevation_angle(elrad):
     if (alpha_0d+r)>90:
         return(math.pi/2)
     elif (alpha_0d+r<=90):
-        return(math.radians(alpha_0d+r))
+        return(math.radians(alpha_0d+r))   
 
-def azimuth_angle(elrad, lat, decrad, hrrad):
-    """Returns the azimuth angle in radians based on
-    Elevation Angle (radians) = elrad
-    Latitude (degrees) = lat
-    Declination Angle (radians) = decrad"""
-    
-    a = (math.sin(elrad)*math.sin(math.radians(lat))-math.sin(decrad))/(math.cos(elrad)*math.cos(math.radians(lat)))
-    try:
-        b = math.acos(a)
-    except:
-        if a > 1:
-            b = 0
-        elif (math.cos(elrad)==0) or a<-1:
-            b = math.pi
-
-    if (hrrad < -math.pi):
-        return (b)
-    elif ((-math.pi<=hrrad) and (hrrad<=0)) or (hrrad>=math.pi):
-        return(math.pi-b)
-    elif (0<hrrad) and hrrad<math.pi:
-        return (math.pi+b)
 
 
 
@@ -107,30 +98,31 @@ class EclipticCoordinate(object):
         Ecliptic Longitude (rad)
         Obliquity (rad)
         Right Ascension (rad)
-        Declination Angle (rad)"""
+        Declination Angle (rad)
+        """
     
     def __init__(self, dt):
         self.dt = dt
         self.julian = julian(dt)
-        self.mnlong = self.set_mnlong()
-        self.mnanom = self.set_mnanom()
-        self.eclong = self.set_eclong()
-        self.obleq = self.set_obleq()
-        self.ra = self.set_ra()
-        self.decrad = self.set_decrad()
+        self.mnlong = self.set_mean_longitude()
+        self.mnanom = self.set_mean_anomaly()
+        self.eclong = self.set_ecliptic_longitude()
+        self.obleq = self.set_oblequity()
+        self.ra = self.set_right_ascension()
+        self.decrad = self.set_declination()
         
     def __repr__(self):
         return "dt = {7},julian = {0}, mnlong = {1}, mnanom = {2}, eclong = {3}, obliq = {4}, ra = {5}, decrad = {6}".format(self.julian, self.mnlong, self.mnanom, self.eclong, self.obleq, self.ra, self.decrad, self.dt)
     
-    def set_mnlong (self):
-        """Returns the mean solar longitude in degrees (see NREL, Michalsky, Walraven)"""
+    def set_mean_longitude (self):
+        """Returns the mean solar longitude in degrees (see NREL, Michalsky, Walraven)."""
         mnlong = 280.46+0.9856474*self.julian
         mnlong = mnlong - 360*(mnlong//360)
         if mnlong < 0:
             mnlong = mnlong + 360
         return(mnlong)
 
-    def set_mnanom (self):
+    def set_mean_anomaly (self):
         """Returns the mean solar anomaly in radians (see NREL, Michalsky, Walraven)"""
         mnanom = (357.528 + 0.9856003*self.julian)
         mnanom = mnanom - 360*(mnanom//360)
@@ -139,7 +131,7 @@ class EclipticCoordinate(object):
             
         return(math.radians(mnanom))
 
-    def set_eclong(self):
+    def set_ecliptic_longitude(self):
         """Returns the ecliptic longitude in radians (see NREL, Michalsky, Walraven)"""
         eclong = (self.mnlong+1.915*math.sin(self.mnanom)+0.02*math.sin(2*self.mnanom))
         eclong = eclong-360*(eclong//360)
@@ -150,14 +142,14 @@ class EclipticCoordinate(object):
 
         return eclong
 
-    def set_obleq(self):
+    def set_oblequity(self):
         """Returns the obliquity angle in radians(see NREL, Michalsky, Walraven)."""
 
         obleq = 23.439-0.0000004*self.julian
 
         return math.radians(obleq)
 
-    def set_ra(self):
+    def set_right_ascension(self):
         """Returns the right ascension"""
 
         if math.cos(self.eclong)<0:
@@ -167,11 +159,34 @@ class EclipticCoordinate(object):
         else:
             ra = math.atan(math.cos(self.obleq)*math.sin(self.eclong)/math.cos(self.eclong))
         return ra
+
     
-    def set_decrad(self):
-        """Returns declination."""
+    def set_declination(self):
+        """Returns declination angle in radians."""
         return(math.asin(math.sin(self.obleq)*math.sin(self.eclong)))
 
+
+    def equation_of_time(self):
+        """Returns equation of time"""
+        a = 1/15*(self.mnlong-180/math.pi*self.ra)
+        
+        if (-0.33<=a<=0.33):
+            return a
+        
+        elif a<-0.33:
+            return(a+24)
+        
+        elif a>0.33:
+            return (a-24)
+        
+        else:
+            print("Issue calculating equation of time.")
+            return None
+    
+    
+
+ 
+    
 class Position(object):
     """Coordinate as decimal latitude and longitude."""
     def __init__(self, latitude, longitude):
@@ -179,34 +194,22 @@ class Position(object):
         self.lon = longitude
         
     def __repr__(self):
-        return "{0}_{1}".format(self.lat, self.lon)
-
-class SolarPosition(object):
-    """Has angluar infomation based on EclipticCoordinate and Position.
-        Greenwich Mean Siderial Time = gmst
-        Local Mean Siderial Time = lmst
-        Hour Angle (rad) = hrrad
-        Elevation Angle (rad) = elrad
-        Refraction Corrected Elevation Angle (rad) = cerad
-        Azimuth Angle (rad) = azrad
-        Zenith Angle (rad) = znrad"""
+        return "{0},{1}".format(self.lat, self.lon)
     
-    def __init__(self, Position, EclCoord):
-        self.gmst = gmst(EclCoord.julian, EclCoord.dt)
-        self.lmst = lmst(self.gmst, Position.lon) + Position.lon/15
-        self.hrrad = self.set_hrrad(EclCoord.ra)
-        self.elrad = elev_angle(Position.lat, EclCoord.decrad, self.hrrad)
-        self.cerad = refraction_corrected_elevation_angle(self.elrad)
-        self.azrad = azimuth_angle(self.elrad, Position.lat, EclCoord.decrad, self.hrrad)
-        self.znrad = math.pi/2-self.cerad
-        
-    def __repr__(self):
-        return "gmst = {0}, lmst = {1}, hrrad = {2}, elrad = {3}, cerad = {4}, azrad = {5}, znrad = {6}".format(self.gmst, self.lmst, self.hrrad, self.elrad, self.cerad, self.azrad, self.znrad)
+    #Time related methods
+    
+    def local_mean_siderial_time(self, gmst):
+        """Calculates the siderial time at the local position from Greenwich Mean Siderial Time, and the longitude (see NREL, Michalsky, Walraven)."""
+        a = gmst + self.lon/15
+        a = a - 24*(a//24)
+        if a < 0:
+            a = a + 24
+        return(a)
 
-    def set_hrrad(self, ra):
-        """sets hour angle"""
+    def hour_angle(self, lmst, right_ascension):
+        """Determines hour angle based on the local mean siderial time and the right ascension angle."""
 
-        b = 15*math.pi/180*self.lmst-ra
+        b = 15*math.pi/180*lmst-right_ascension
 
         if (b < -math.pi):
             b = b+ 2*math.pi
@@ -215,324 +218,133 @@ class SolarPosition(object):
             b = b - (2*math.pi)
         
         return(b)
-
-
-# def declination_angle(dt):
-#     """Angular position of the sun at solar noon by more accurate calculation. Eq. 1.6.1b Duffie and Beckman
-#     The angle between the rays of the Sun and the plane of the Earth's equator."""
     
-#     n = (dt - datetime.datetime(dt.year//4*4,1,1)).total_seconds()
-#     B = (n-1)*2*math.pi/31556926
-#     b = 0.006918 - 0.399912*math.cos(B) + 0.070257*math.sin(B) - 0.006758*math.cos(2*B)+0.000907*math.sin(2*B)-0.002697*math.cos(3*B)+0.00148*math.sin(3*B)
+    #Methods for solar position relative to the point lat/long.
     
-#     return (math.degrees(b))
+    def elevation_angle(self, declination, hour_angle):
+        """Determines the elevation angle based on inputs. Radians"""
+        x = math.sin(declination)*math.sin(math.radians(self.lat)) + math.cos(declination)*math.cos(math.radians(self.lat))*math.cos(hour_angle)
 
-# """Classes are:
-#         Positon - has lat long and all methods relating only to those attributes
-#         Orientation - now redundant has only attributes relating to the slope and surface azimuth
-#         SolarConfig - has position and orientation attributes and methods that require both (angle of incidence)""" 
+        if (x>=-1) and (x<=1):
+            return math.asin(x)
+        else:
+            return np.sign(x)*math.pi/2
+        
+        
+    def zenith_angle(self, declination, hour_angle):
+        zenith = math.pi/2-self.elevation_angle(declination, hour_angle)
+        return zenith
+        
 
+    def azimuth_angle(self, elevation_angle, declination, hour_angle):
+        """Returns the azimuth angle in radians based on
+        Elevation Angle (radians) = elrad
+        Latitude (degrees) = lat
+        Declination Angle (radians) = decrad"""
 
+        a = (math.sin(elevation_angle)*math.sin(math.radians(self.lat))-math.sin(declination))/(math.cos(elevation_angle)*math.cos(math.radians(self.lat)))
+        try:
+            b = math.acos(a)
+        except:
+            if a > 1:
+                b = 0
+            elif (math.cos(elevation_angle)==0) or a<-1:
+                b = math.pi
+
+        if (hour_angle < -math.pi):
+            return (b)
+        elif ((-math.pi<=hour_angle) and (hour_angle<=0)) or (hour_angle>=math.pi):
+            return(math.pi-b)
+        elif (0<hour_angle) and (hour_angle<math.pi):
+            return (math.pi+b)
+        
+    #Methods for sunrise/sunset    
     
+    def sunrise_hour_angle(self, declination):
+        """Returns the hour angle at sunrise/sunset. If there is no sunrise/sunset. Returns 0 if the sun is down all day, pi if the sun is up all day."""
+        a = -math.tan(math.radians(self.lat))*math.tan(declination)
+        if a>=1:
+            return(0)
+        
+        elif a<=-1:
+            return math.pi
+        
+        elif (-1<a<1):
+            return(math.acos(a))
     
-# class Position(object):
-#     """Coordinate as decimal latitude and longitude."""
-#     def __init__(self, latitude, longitude):
-#         self.lat = latitude
-#         self.lon = longitude
-        
-#     def __repr__(self):
-#         return "{0}_{1}".format(self.latitude, self.longitude)
+    def sunrise_hour(self, declination, timezone, EOT):
+        """Determines the hour at sunrise on a given day of the year (declination)."""
+        a = 12-1/15*180/math.pi*self.sunrise_hour_angle(declination)-(self.lon/15-timezone)-EOT
+        return (a)
     
-#     #Methods relating to time:
-    
-#     def solar_time(self, UTS_datetime):
-#         """Returns solar time for input clock time. Eq. 1.5.2 Duffie and Beckman."""
-        
-#         n = UTS_datetime.dayofyear+UTS_datetime.hour/24+UTS_datetime.minute/1440
-
-#         B = (n-1)*2*math.pi/365
-#         E = 229.2*(0.000075 + 0.001868*math.cos(B) - 0.032077*math.sin(B) - 0.014615*math.cos(2*B) - 0.04089*math.sin (2*B))
-
-#         return(UTS_datetime + pd.Timedelta(minutes = 4*(self.longitude)+E))
-    
-#     def hour_angle(self, UTS_datetime = None, solarTime = None):
-#         """Takes a pd.datetime value for solar time and returns the solar hour angle to the second."""
-#         try:
-#             decimal_hour_time = solarTime.hour + solarTime.minute/60 +solarTime.second/3600
-            
-#         except:
-#             solar_time = self.solar_time(UTS_datetime)
-#             decimal_hour_time = solar_time.hour+solar_time.minute/60+solar_time.second/3600
-            
-#         return(360*(decimal_hour_time-12)/24)
-
-#     def sun_rise(self, UTS_datetime = None, declinationAngle = None):
-#         """Returns the hour angle at sunrise/sunset."""
-#         try:
-#             delta = math.radians(declinationAngle)
-#             phi = math.radians(self.latitude)
-            
-        
-#         except:
-#             delta = math.radians(declination_angle(UTS_datetime))
-#             phi = math.radians(self.latitude)
-
-#         return (math.degrees(math.acos(-math.tan(phi)*math.tan(delta))))                                     
-                                     
-                                     
-                                     
-#     #Methods for Position:
-
-#     def zenith_angle(self, UTS_datetime = None, declinationAngle = None, hourAngle = None):
-#         """Determines the zenith angle based on inputs. """
-
-#         phi = math.radians(self.latitude)
-#         try:
-#             delta = math.radians(declinationAngle)
-#         except:
-#             delta = math.radians(declination_angle(UTS_datetime))
-#         try:
-#             omega = math.radians(hourAngle)
-#         except:
-#             omega = math.radians(self.hour_angle(UTS_datetime)) 
-          
-#         x = math.cos(phi)*math.cos(delta)*math.cos(omega)+math.sin(phi)*math.sin(delta)
-
-#         if abs(math.degrees(math.acos(x))) > 90:
-#             return(None)
-#         else:
-#             return (math.degrees(math.acos(x)))
-        
-#     def elevation_angle(self, UTS_datetime = None, declinationAngle = None, hourAngle = None):
-#         """Determines the elevation angle based on inputs. """
-
-#         phi = math.radians(self.latitude)
-#         try:
-#             delta = math.radians(declinationAngle)
-#         except:
-#             delta = math.radians(declination_angle(UTS_datetime))
-#         try:
-#             omega = math.radians(hourAngle)
-#         except:
-#             omega = math.radians(self.hour_angle(UTS_datetime)) 
-
-#         x = np.arcsin(np.cos(delta)*np.cos(phi)*np.cos(omega)+np.sin(delta)*np.sin(phi))
-
-#         if x >= 0:
-#             return (np.degrees(x))
-
-#         else:
-#             return (None)        
-        
-#     def solar_azimuth(self, UTS_datetime = None, declinationAngle = None, hourAngle = None, zenithAngle = 'Not Provided'):
-
-#         """The solar azimuth. Eq 1.6.6 Duffie and Beckman."""
-#         phi = math.radians(self.latitude)
-#         try:
-#             delta = math.radians(declinationAngle)
-#         except:
-#             delta = math.radians(declination_angle(UTS_datetime))
-#         try:
-#             omega = math.radians(hourAngle)
-#         except:
-#             omega = math.radians(self.hour_angle(UTS_datetime))
-            
-#         try:
-#             theta_z = np.radians(zenithAngle)
-            
-#         except:
-#             try:
-#                 theta_z = np.radians(self.zenith_angle(UTS_datetime))
-#             except:
-#                 return None
-            
-#         a = (np.cos(theta_z)*np.sin(phi)-np.sin(delta))/(np.sin(theta_z)*np.cos(phi))
-        
-#         if abs(a)>1:
-#             a=np.sign(a)*1
-            
-#         x = np.degrees(np.sign(omega)*abs(np.arccos(a)))
-        
-#         if phi >= 0:
-#             return(x)
-#         elif x>0:
-#             return 180-x
-#         elif x<0:
-#             return (-x-180)
-#         else:
-#             return 0
-
-#     def solar_azimuth_topocentric(self, UTS_datetime = None, declinationAngle = None, hourAngle = None):
-#         """Returns the solar azimuth at a time/latitude. Eq. 7 page section 12.6 from 'Fundimentals of Renewable
-#                 Energy Processes' by Aldo Vieira da Rosa."""
-
-#         phi = math.radians(self.latitude)
-#         try:
-#             delta = math.radians(declinationAngle)
-#         except:
-#             delta = math.radians(declination_angle(UTS_datetime))
-#         try:
-#             omega = math.radians(hourAngle)
-#         except:
-#             omega = math.radians(self.hour_angle(UTS_datetime))
-
-#         x = np.sin(omega)/(np.sin(phi)*np.cos(omega)-np.cos(phi)*np.tan(delta))
-
-#         if  (np.sign(omega) == 1) and (np.sign(x) == 1):
-#             return (180 + np.degrees(np.arctan(x)))
-
-#         elif (np.sign(omega) == 1) and (np.sign(x) == -1):
-#             return (360 + np.degrees(np.arctan(x)))
-
-#         elif (np.sign(omega) == -1) and (np.sign(x) == 1):
-#             return (x)
-
-#         elif (np.sign(omega) == -1) and (np.sign(x) == -1):
-#             return (180 + np.degrees(np.arctan(x)))
-
-#         else:
-#             print("Something went wrong calculating solar azimuth.")
-#             return(None)        
-        
-
-    #Methods that produce dataframes containing data for plotting.
-
-#     def getSolarTime(self, frequency):
-#         """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding solar time at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
-#         df = pd.DataFrame(date_rng, columns=['date'])
-#         df['SolarTime'] = df.apply(lambda x: self.solar_time(x['date']), axis = 1)
-#         return df
-
-#     def getHourAngle(self, frequency):
-#         """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding hour angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
-#         df = pd.DataFrame(date_rng, columns=['date'])
-#         df['HourAngle'] = df.apply(lambda x: self.hour_angle(x['date']), axis = 1)
-#         return df    
-
-#     def getSunRise(self):
-#         """Returns a dataframe with approximate hour angle at sunrise/sunset at the Position self for each day of the year."""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= 'D', closed = 'left')
-#         df = pd.DataFrame(date_rng, columns=['date'])
-#         df['SunRise'] = df.apply(lambda x: self.zenith_angle(x['date']), axis = 1)
-#         return df
-    
-#     def getZenith(self, frequency):
-#         """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding zenith angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
-#         df = pd.DataFrame(date_rng, columns=['date'])
-#         df['Zenith'] = df.apply(lambda x: self.zenith_angle(x['date']), axis = 1)
-#         return df
-
-#     def getElevation(self, frequency):
-#         """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding elevation angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
-#         df = pd.DataFrame(date_rng, columns=['date'])
-#         df['Elevation'] = df.apply(lambda x: self.elevation_angle(x['date']), axis = 1)
-#         return df            
-        
-#     def getAzimuth(self, frequency):
-#         """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding azimuth angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
-#         df = pd.DataFrame(date_rng, columns=['date'])
-#         df['Azimuth'] = df.apply(lambda x: self.solar_azimuth(x['date']), axis = 1)
-#         return df
+    def sunrise_hour(self, declination, timezone, EOT):
+        """Determines the hour at sunset on a given day of the year (declination)."""
+        a = 12+1/15*180/math.pi*self.sunrise_hour_angle(declination)-(self.lon/15-timezone)-EOT
+        return (a)
     
     
-#     def getTopoAzimuth(self, frequency):
-#         """Returns a dataframe with timestamps at 'frequency' for the current year, and the corresponding topocentric azimuth angle at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
-#         df = pd.DataFrame(date_rng, columns=['date'])
-#         df['Topocentric_Azimuth'] = df.apply(lambda x: self.solar_azimuth_topocentric(x['date']), axis = 1)
-#         return df
+class SolarConfig(Position):
+    """SolarConfig is a subclass of Position. It contains orientation attributes in addition to latitude and longitude. Methods will determine the angle of incidence etc.
+    Azimuth Angle between north and the base of the panel with 0 facing West."""
     
-#     def getAllInfo(self, frequency):
-#         """Returns a dataframe with specified information for the current year for timestamps at 'frequency' at Position self. Frequency as per Pandas date_range eg 'H' for hour, '10min' for ten minute) see https://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases"""
-        
-#         date_rng = pd.date_range(start='1/1/%d' %pd.Timestamp.utcnow().year, end='1/1/%d' %(pd.Timestamp.utcnow().year+1), freq= frequency, closed = 'left')
-        
-#         df = pd.DataFrame(date_rng, columns=['date'])
-        
-#         df['SolarTime'] = df.apply(lambda x: self.solar_time(x['date']), axis = 1)
-        
-#         df['HourAngle'] = df.apply(lambda x: self.hour_angle(x['date'], x['SolarTime']), axis = 1)
-
-#         df['DeclinationAngle'] = df.date.apply(declination_angle)
-        
-#         df['Zenith'] = df.apply(lambda x: self.zenith_angle(x['date'], x['DeclinationAngle'], x['HourAngle']), axis = 1)
-        
-#         df['Elevation'] = df.apply(lambda x: self.elevation_angle(x['date'], x['DeclinationAngle'], x['HourAngle']), axis = 1)
-        
-#         df['Azimuth'] = df.apply(lambda x: self.solar_azimuth(x['date'], x['DeclinationAngle'], x['HourAngle'], x['Zenith']), axis = 1)
-        
-#         df['Topocentric_Azimuth'] = df.apply(lambda x: self.solar_azimuth_topocentric(x['date'], x['DeclinationAngle'], x['HourAngle']), axis = 1)
-        
-#         return df
-
-# class SolarOrientation(object):
-#     """Orientation and slope of the site."""
-
-#     def __init__(self, orientation, slope):
-#         self.orientation = orientation
-#         self.slope = slope
+    def __init__(self, latitude, longitude, slope, surface_azimuth):
+        Position.__init__(self,latitude, longitude)
+        self.slop = slope
+        self.surface_azimuth = surface_azimuth
     
-#     def __repr__(self):
-#         return "{0}_{1}".format(self.orientation, self.slope)
+    def angle_of_incidence(self, zenith_angle, azimuth_angle):
+        a = math.sin(zenith_angle)*math.cos(math.radians(self.surface_azimuth)- azimuth_angle)*math.sin(radians(self.slope))+math.cos(zenith_angle)*math.cos(math.radians(self.slope))
+        
+        if a<-1:
+            return (math.pi)
+        elif a>1:
+            return 0
+        elif (-1<=a<=1):
+            return math.acos(a)
+        
+    def HDKR_diffuse_radiation(self, angle_of_incidence, zenith_angle, extraterrestiral_irradiance, Eb, Ed, albedo = 0):
+        """Calculates the diffuse radiation based on the Hay, Davies, Klucher and Reindl model. Including the reflectance which is initialised at zero (albedo). Parameters use are named after those in NREL.
+        Ibh : Incident beam irradiadiance on "Plane of Array".
+        Igh : Total irradiance on "Plane of Array".
+        Eb : Beam horizontal irradiance (measured).
+        Ed : Diffuse horizontal irradiance (measured).
+        Rb : Ratio of beam incident to "Plane of Array" to horizontal beam.
+        Ai : The anisotropy index for forward scattering circumsolar diffuse irradiance.
+        f : Modulating factor for horizontal brightening correction.
+        s : Horison brightening correction factor.
+        
+        Note that the isohor term contains both isotropic and horizonal brightening iso*(1+x)."""
+        
+        Ibh = Eb*math.cos(zenith_angle)
+        
+        Igh = Ibh + Ed
+        
+        Rb = math.cos(angle_of_incidence)/math.cos(zenith_angle)
+        
+        Ai = Ibh/extraterrestrial_irradiance
+        
+        f = math.sqrt(Ibh/Igh)
+        
+        s = (math.sin(self.slope/2))**3
+        
+        cir = Ed*Ai*Rb
+        iso = Ed*(1-Ai)*(1+math.cos(self.slope))/2
+        isohor = iso*(1+f*s)
+        
+        #Ground reflected diffuse (albedo is ground reflectance, if not provided = 0)
+        Ir = albedo*(Igh)*(1-math.cos(self.slope))/2
+        
+        return (isohor+cir+Ir)
+    
+    
+    
+     
+    
+    
 
-
-# class SolarConfig(object):
-#     """Solar configuration to be considered."""
 
     
-#     def __init__(self, position, orientation, slope):
-#         """Create a solar site.
-#             name        - the site id.
-#             latitude    - the latitude of the site in decimal degrees.
-#             longitude   - the longitude of the site as a float in decimal degrees.
-#             slope       - the slope of the solar collector in decimal degrees.
-#             orientation - the orientation of the collector in decimal degrees. """
-        
-#         self.position = position
-#         self.orientation = orientation
-#         self.slope = slope
-        
-            
-#     def getCoordinates(self):
-#         """Returns the coordinates of the site."""
-#         return self.position
 
-
-#     def getOrientation(self):
-#         """Returns the orientation of the site."""
-#         return [self.orientation, self.slope]
     
-#     def angle_of_incidence(self, UTS_datetime):
-#         """Returns the angle of incidence. Eq. 1.6.2 Duffie and Beckman."""
 
-#         delta = math.radians(declination_angle(UTS_datetime))
-#         phi = math.radians(self.position.latitude)
-#         omega = math.radians(self.position.hour_angle(UTS_datetime))
-#         beta = math.radians(self.slope)
-#         gamma = math.radians(self.orientation)
-
-#         a = math.sin(delta)*math.sin(phi)*math.cos(beta)
-#         b = math.sin(delta)*math.cos(phi)*math.sin(beta)*math.cos(gamma)
-#         c = math.cos(delta)*math.cos(phi)*math.cos(beta)*math.cos(omega)
-#         d = math.cos(delta)*math.sin(phi)*math.sin(beta)*math.cos(gamma)*math.cos(omega)
-#         e = math.cos(delta)*math.sin(beta)*math.sin(gamma)*math.sin(omega)
-
-#         return (min(90,math.degrees(math.acos((a-b+c+d+e)))))
-
-
-
-
-
+        
