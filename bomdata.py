@@ -4,7 +4,6 @@ import xarray as xr
 import os
 import datetime
 
-
 def get_npdatetime(filename):
     """Accepts a filename as a string and returns the datetime value associated with UTS timezone. Assumed to be in format: 'solar_dni_20150101_01_UT.txt'"""
     
@@ -16,12 +15,16 @@ def get_npdatetime(filename):
     return (np.datetime64('{}-{}-{}T{}:00:00'.format(year, month, day, hour)))
 
 def get_files(mypath, firstnine):
-    """Returns a list of files in 'mypath' where the first 9 characters match 'firstnine'."""
-    path_list = [f for f in os.listdir(mypath) if f[0:9]==firstnine]
-    return(path_list[:100])
+    """Returns a list of files that have filenames starting with "firstnine" as list of lists [fullpath, filename]."""
+    fileinfo = []
+    for root, dirs, files in os.walk(mypath, topdown = False):
+        for name in files:
+            if name[0:9] == firstnine:
+                fileinfo.append([os.path.join(root,name),name])
+    return (fileinfo)
 
 
-def create_xarr(mypath, filelist):
+def create_xarr(filelist):
     """Creates xarrays from files in the filelist within the current directory."""
     
     #Create lat/long np.arrays for creation of xarrays
@@ -32,10 +35,10 @@ def create_xarr(mypath, filelist):
 
     for file in filelist:
         #creates a timestamp
-        datetime = get_npdatetime(file)
+        datetime = get_npdatetime(file[1])
     
         #Creates a np array with additional empty dimension (for time) from the file with appropriate filename.
-        np_rad = np.expand_dims(np.loadtxt(mypath +'/'+ file, delimiter = ' ', skiprows = 6), axis = 0)
+        np_rad = np.expand_dims(np.loadtxt(file[0], delimiter = ' ', skiprows = 6), axis = 0)
         
         #Creates a xarray DataArray with 3 dims, coords time, latitude, longitude.
         temp_arr = xr.DataArray(np_rad, coords = [[datetime], lats, lons], dims=['time','latitude', 'longitude'])
@@ -60,8 +63,8 @@ def convert_bomdata(mypath):
     DNI_files = get_files(mypath, 'solar_dni')
     GHI_files = get_files(mypath, 'solar_ghi')
     
-    dniArray = create_xarr(mypath, DNI_files)
-    ghiArray = create_xarr(mypath, GHI_files)
+    dniArray = create_xarr(DNI_files)
+    ghiArray = create_xarr(GHI_files)
     
     radDataset = xr.Dataset({'dni': dniArray, 'ghi' : ghiArray})
     radDataset.attrs['name'] = 'solarradiation'
@@ -69,6 +72,7 @@ def convert_bomdata(mypath):
     radDataset.to_netcdf('radiation.nc', unlimited_dims= 'time')
     
     return(None)
+
 
 
 
