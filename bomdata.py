@@ -21,7 +21,7 @@ def get_files(mypath, firstnine):
         for name in files:
             if name[0:9] == firstnine:
                 fileinfo.append([os.path.join(root,name),name])
-    return (fileinfo)
+    return (fileinfo[:max(len(fileinfo), 100)])
 
 
 def create_xarr(filelist):
