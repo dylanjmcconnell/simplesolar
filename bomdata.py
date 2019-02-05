@@ -4,7 +4,6 @@ import xarray as xr
 import os
 import datetime
 
-import getdata as gd
 
 def get_npdatetime(filename):
     """Accepts a filename as a string and returns the datetime value associated with UTS timezone. Assumed to be in format: 'solar_dni_20150101_01_UT.txt'"""
@@ -16,13 +15,15 @@ def get_npdatetime(filename):
     
     return (np.datetime64('{}-{}-{}T{}:00:00'.format(year, month, day, hour)))
 
-def get_files(mypath, firstnine)
+def get_files(mypath, firstnine):
     """Returns a list of files in 'mypath' where the first 9 characters match 'firstnine'."""
     path_list = [f for f in os.listdir(mypath) if f[0:9]==firstnine]
     return(path_list)
 
 
 def create_xarr(filelist):
+    """Creates xarrays from files in the filelist within the current directory."""
+    
     #Create lat/long np.arrays for creation of xarrays
     lats = np.flip(np.arange(-43.95, -10.05, 0.05), axis = 0)
     lons = np.arange(112.05, 153.96, 0.05)
@@ -31,7 +32,7 @@ def create_xarr(filelist):
 
     for file in filelist:
         #creates a timestamp
-        datetime = gd.get_npdatetime(file)
+        datetime = get_npdatetime(file)
     
         #Creates a np array with additional empty dimension (for time) from the file with appropriate filename.
         np_rad = np.expand_dims(np.loadtxt(file, delimiter = ' ', skiprows = 6), axis = 0)
@@ -52,16 +53,10 @@ def create_xarr(filelist):
         
     return(radArray)
 
-def combine_xarr(name, dniArray, ghiArray)
-    radDataset = xr.Dataset({'dni': dniArray, 'ghi' : ghiArray})
-    radDataset.attrs['name'] = name
-    return (radDataset)
-
-def save_dataset(dataset)
-    radDataset.to_netcdf('radiation.nc', unlimited_dims= 'time')
 
 
 def convert_bomdata(mypath):
+    """Saves a netCDF to the path specified."""
     DNI_files = get_files(mypath, 'solar_dni')
     GHI_files = get_files(mypath, 'solar_ghi')
     
