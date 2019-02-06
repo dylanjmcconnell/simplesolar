@@ -3,6 +3,8 @@ import pandas as pd
 import xarray as xr
 import os
 import datetime
+import time
+import progressbar
 
 def get_npdatetime(filename):
     """Accepts a filename as a string and returns the datetime value associated with UTS timezone. Assumed to be in format: 'solar_dni_20150101_01_UT.txt'"""
@@ -17,10 +19,13 @@ def get_npdatetime(filename):
 def get_files(mypath, firstnine):
     """Returns a list of files that have filenames starting with "firstnine" as list of lists [fullpath, filename]."""
     fileinfo = []
-    for root, dirs, files in os.walk(mypath, topdown = False):
+    print("Getting file list.")
+    for root, dirs, files in progressbar.progressbar(os.walk(mypath, topdown = False)):
         for name in files:
             if name[0:9] == firstnine:
                 fileinfo.append([os.path.join(root,name),name])
+                
+    print (str(datetime.datetime.now()), ": Number of files =", len(fileinfo))
     return (fileinfo)
 
 
@@ -30,18 +35,22 @@ def create_xarr(filelist):
     #Create lat/long np.arrays for creation of xarrays
     lats = np.flip(np.arange(-43.95, -10.05, 0.05), axis = 0)
     lons = np.arange(112.05, 153.96, 0.05)
-
-    #Create array for all of the radiation files, also create a datetime list, and 
-
-    for file in filelist:
-        #creates a timestamp
-        datetime = get_npdatetime(file[1])
     
+    
+    print(str(datetime.datetime.now()), ": Creating xarray of files.")
+    
+    
+    for file in progressbar.progressbar(filelist):
+        
+        #creates a timestamp
+        filedatetime = get_npdatetime(file[1])
+        
+        
         #Creates a np array with additional empty dimension (for time) from the file with appropriate filename.
         np_rad = np.expand_dims(np.loadtxt(file[0], delimiter = ' ', skiprows = 6), axis = 0)
         
         #Creates a xarray DataArray with 3 dims, coords time, latitude, longitude.
-        temp_arr = xr.DataArray(np_rad, coords = [[datetime], lats, lons], dims=['time','latitude', 'longitude'])
+        temp_arr = xr.DataArray(np_rad, coords = [[filedatetime], lats, lons], dims=['time','latitude', 'longitude'])
     
         try:
             #if the DataArray array exists, add the new temp array to it as additional entry on the time axis.
@@ -51,6 +60,8 @@ def create_xarr(filelist):
             #if the DataArray doesnt exist then initialise it.
             radArray = temp_arr
         
+        
+    print (str(datetime.datetime.now()), ": Sorting xarray.")    
     radArray = radArray.sortby('time')
     radArray.attrs['unit'] = 'W/m2'
         
@@ -69,6 +80,7 @@ def convert_bomdata(mypath, targetpath='/data/marble/sandbox/jsilberstein/radiat
     radDataset = xr.Dataset({'dni': dniArray, 'ghi' : ghiArray})
     radDataset.attrs['name'] = 'solarradiation'
     
+    print(str(datetime.datetime.now()), ": Saving as netCDF.")
     radDataset.to_netcdf(targetpath, unlimited_dims= 'time')
     
     return(None)
