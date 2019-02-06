@@ -58,7 +58,7 @@ def create_xarr(filelist):
 
 
 
-def convert_bomdata(mypath):
+def convert_bomdata(mypath, targetpath='/data/marble/sandbox/jsilberstein/radiation.nc'):
     """Saves a netCDF to the path specified."""
     DNI_files = get_files(mypath, 'solar_dni')
     GHI_files = get_files(mypath, 'solar_ghi')
@@ -69,7 +69,7 @@ def convert_bomdata(mypath):
     radDataset = xr.Dataset({'dni': dniArray, 'ghi' : ghiArray})
     radDataset.attrs['name'] = 'solarradiation'
     
-    radDataset.to_netcdf('radiation.nc', unlimited_dims= 'time')
+    radDataset.to_netcdf(targetpath, unlimited_dims= 'time')
     
     return(None)
 
