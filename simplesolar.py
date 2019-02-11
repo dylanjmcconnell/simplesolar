@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import matplotlib.pyplot as plt
+import xarray as xr
 
 #Functions related to time
   
@@ -281,6 +282,17 @@ class Position(object):
         """Determines the hour at sunset on a given day of the year (declination)."""
         a = 12+1/15*180/math.pi*self.sunrise_hour_angle(declination)-(self.lon/15-timezone)-EOT
         return (a)
+    
+    def get_radiation_data(self, path = '/data/marble/jsilberstein/*.nc'):
+        """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
+        
+        radiation_data = xr.open_mfdataset(path, concat_dim = 'time')
+        
+        dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
+        
+        return(dsloc.to_dataframe())
+    
+    
     
     
 class SolarConfig(Position):
