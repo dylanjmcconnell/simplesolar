@@ -4,54 +4,23 @@ import numpy as np
 import datetime
 import matplotlib.pyplot as plt
 import xarray as xr
+import pytz
+import types
 
-#Functions related to time
-  
-def julian(dt):
-    """Finds the julian date based on the SAM Photovoltaic Model Techinical Reference Update, Paul Gilman, Aron Dobos, Nicholas DiOrio, Janine Freeman, Steven Janzou, and David Ryberg, of National Renewable Energy Laboratory. March 2018. After Michalsky 1988."""
-    
-    days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    
-    year = dt.year
-    month = dt.month
-    day = dt.day
-    hour = dt.hour + dt.minute/60
-    timezone = dt.utcoffset()
-    
-    k=0
-    if (year%4 == 0):
-        k = 1
-    
-    jdoy = day + sum(days[0:(month-1)])
-    if month > 2:
-        jdoy = jdoy + k
-    
-    try:
-        tutc = hour - timezone
-        if tutc<0:
-            tutc = tutc+24
-        if tutc>24:
-            tutc = tutc-24
-            
-    except:
-        tutc = hour
-        
-    return (32916.5 + 365*(year-1949)+(year-1949)//4+jdoy+tutc/24-51545)
-
-def Greenwich_mean_siderial_time(julian, dt):
-    """Calculates the siderial time from the julian and datetime (requires timezone (pytz)) (see NREL, Michalsky, Walraven)."""
-    a = 6.697375+0.0657098242*julian+(dt.hour + dt.minute/60-dt.utcoffset().seconds/3600)
-    a = a - 24*(a//24)
-    if a < 0:
-        a = a + 24
-    return(a)
 
 #Functions relating to radiation
+
+def test_melb():
+    loc = Position(-37, 144)
+    con = SolarConfig(-37, 144, 25, 0)
+    df = loc.get_radiation_data('Users/felixsilberstein/Desktop/sandbox/*.nc')
+    return (df)
+
 
 def mean_extraterrestrial_radiation(datetime):
     """Extraterrestrial radiation incident on a plane normal to the radiation. Eq. 1.4.1b Duffie and Beckman."""
     
-    doy = datetime.dt.dayofyear+datetime.dt.hour/24+datetime.dt.minute/1440-datetime.dt.utcoffset().seconds/86400
+    doy = datetime.timetuple().tm_yday+datetime.timetuple().tm_hour/24+datetime.timetuple().tm_min/1440
 
     if doy>365:
         doy = doy-365
@@ -104,16 +73,41 @@ class EclipticCoordinate(object):
     
     def __init__(self, dt):
         self.dt = dt
-        self.julian = julian(dt)
+        self.julian = self.julian()
+        self.gmst = self.greenwich_mean_siderial_time()
         self.mnlong = self.set_mean_longitude()
         self.mnanom = self.set_mean_anomaly()
         self.eclong = self.set_ecliptic_longitude()
         self.obleq = self.set_oblequity()
         self.ra = self.set_right_ascension()
         self.decrad = self.set_declination()
+        self.eot = self.set_equation_of_time()
         
-    def __repr__(self):
-        return "dt = {7},julian = {0}, mnlong = {1}, mnanom = {2}, eclong = {3}, obliq = {4}, ra = {5}, decrad = {6}".format(self.julian, self.mnlong, self.mnanom, self.eclong, self.obleq, self.ra, self.decrad, self.dt)
+    def __str__(self):
+        return "dt = {}, julian = {}, decrad = {}".format(self.dt, self.julian, self.decrad)
+    
+    def julian(self):
+        """Finds the julian date based on the SAM Photovoltaic Model Techinical Reference Update, Paul Gilman, Aron Dobos, Nicholas DiOrio, Janine Freeman, Steven Janzou, and David Ryberg, of National Renewable Energy Laboratory. March 2018. After Michalsky 1988."""
+
+        utctimetuple = self.dt.utctimetuple()
+
+        year = utctimetuple.tm_year
+        jdoy = utctimetuple.tm_yday
+        hour = utctimetuple.tm_hour + utctimetuple.tm_min/60
+
+        return (32916.5 + 365*(year-1949)+(year-1949)//4+jdoy+hour/24-51545)
+
+    def greenwich_mean_siderial_time(self):
+        """Calculates the siderial time from the julian and datetime (requires timezone (pytz)) (see NREL, Michalsky, Walraven)."""
+        utctimetuple = self.dt.utctimetuple()
+        hour = utctimetuple.tm_hour+utctimetuple.tm_min/60
+        
+        a = 6.697375+0.0657098242*self.julian+(hour)
+        a = a - 24*(a//24)
+        if a < 0:
+            a = a + 24
+        return(a)
+    
     
     def set_mean_longitude (self):
         """Returns the mean solar longitude in degrees (see NREL, Michalsky, Walraven)."""
@@ -167,7 +161,7 @@ class EclipticCoordinate(object):
         return(math.asin(math.sin(self.obleq)*math.sin(self.eclong)))
 
 
-    def equation_of_time(self):
+    def set_equation_of_time(self):
         """Returns equation of time"""
         a = 1/15*(self.mnlong-180/math.pi*self.ra)
         
@@ -194,7 +188,7 @@ class Position(object):
         self.lat = latitude
         self.lon = longitude
         
-    def __repr__(self):
+    def __str__(self):
         return "{0},{1}".format(self.lat, self.lon)
     
     #Time related methods
@@ -273,39 +267,139 @@ class Position(object):
         elif (-1<a<1):
             return(math.acos(a))
     
-    def sunrise_hour(self, declination, timezone, EOT):
-        """Determines the hour at sunrise on a given day of the year (declination)."""
-        a = 12-1/15*180/math.pi*self.sunrise_hour_angle(declination)-(self.lon/15-timezone)-EOT
-        return (a)
-    
-    def sunrise_hour(self, declination, timezone, EOT):
-        """Determines the hour at sunset on a given day of the year (declination)."""
-        a = 12+1/15*180/math.pi*self.sunrise_hour_angle(declination)-(self.lon/15-timezone)-EOT
-        return (a)
-    
     def get_radiation_data(self, path = '/data/marble/jsilberstein/*.nc'):
         """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
-        
         radiation_data = xr.open_mfdataset(path, concat_dim = 'time')
-        
         dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
+        df = dsloc.to_dataframe()
+
+        radiation_data.close()
+        return (df)
+
+    def adjust_time(self, index_dt):
+        """Adds column to data frame refering to a timestamp that is adjusted for the satelite delay. Refer to BoM meta data document"""
+
+        if (-44<= self.lat <=-10):
+            latitude = -self.lat
+        else:
+            print("latitude outside range of data.")
+            return(None)
+
+        dates_dict = {'1990-01-01' : datetime.datetime(1989, 12, 1, tzinfo = datetime.timezone.utc ),
+                        '1993-01-01' : datetime.datetime(1993, 1, 1, tzinfo = datetime.timezone.utc ),
+                        '1994-07-01' : datetime.datetime(1994, 7, 1, tzinfo = datetime.timezone.utc ),
+                        '1995-06-11' : datetime.datetime(1995, 6, 11, tzinfo = datetime.timezone.utc ),
+                        '2003-05-21' : datetime.datetime(2003, 5, 21, tzinfo = datetime.timezone.utc ),
+                        '2005-11-01' : datetime.datetime(2005, 11, 1, tzinfo = datetime.timezone.utc ),
+                        '2010-07-01' : datetime.datetime(2010, 7, 1, tzinfo = datetime.timezone.utc ),
+                        '2016-03-22' : datetime.datetime(2016, 3, 22, tzinfo = datetime.timezone.utc )}
+
+        delay = {'1990-01-01': [[45.7, 46.7, 47.7, 48.7, 49.6, 50.5, 51.2, 51.8], [38.7, 39.7, 40.7, 41.7, 42.6, 43.5, 44.2, 44.8]],
+                 '1993-01-01': [[47.2, 48.2, 49.3, 50.2, 51.1, 52.0, 52.7, 53.3], [40.7, 41.7, 42.8, 43.7, 44.6, 45.5, 46.2, 46.8]],
+                 '1994-07-01': [[46.7, 47.7, 48.8, 49.7, 50.6, 51.5, 52.2, 52.8], [40.5, 41.5, 42.6, 43.5, 44.4, 45.3, 46.0, 46.6]],
+                 '1995-06-11': [[46.7, 47.7, 48.8, 49.7, 50.6, 51.5, 52.2, 52.8], [39.7, 40.7, 41.8, 42.7, 43.6, 44.5, 45.2, 45.8]],
+                 '2003-05-21': [[39.9, 41.0, 42.0, 43.0, 43.9, 44.7, 45.5, 46.0], [27.9, 29.0, 30.0, 31.0, 31.9, 32.7, 33.5, 34.0]],
+                 '2005-11-01': [[46.2, 47.2, 48.3, 49.2, 50.1, 51.0, 51.7, 52.3], [46.2, 47.2, 48.3, 49.2, 50.1, 51.0, 51.7, 52.3]],
+                 '2010-07-01': [[44.7, 45.7, 46.8, 47.7, 48.6, 49.5, 50.2, 50.8], [44.7, 45.7, 46.8, 47.7, 48.6, 49.5, 50.2, 50.8]],
+                 '2016-03-22': [[36.0, 36.9, 37.0, 37.9, 38.4, 38.6, 38.9, 39.1], [36.0, 36.9, 37.0, 37.9, 38.4, 38.6, 38.9, 39.1]]}
+
+        lats = [10, 15, 20, 25, 30, 35, 40, 44]
+
+        key = max(k for k in dates_dict if dates_dict[k] <= index_dt)
+
+        #identifies whether the time is in column a or b
+        if index_dt.hour in [18, 19, 20, 21, 23, 0, 1, 2, 3, 5, 6, 7, 8, 9, 11]:
+            a = 0
+        elif index_dt.hour in [22, 4, 10]:
+            a = 1
+        else:
+            return(index_dt)
+
+        offset = np.interp(latitude, lats, delay[key][a])
+
+        return (index_dt + datetime.timedelta(minutes = offset))
+
+    def adjust_time_df(self, df):
+        """Applies the time adjustment to all rows in dataframe (inplace)"""
+        df['time_adjusted'] = df.index.map(lambda x: self.adjust_time(pytz.timezone('UTC').localize(x.to_pydatetime())))
+
+
+    def get_clearsky_df(self, df):
+        """Fills a given pd.DataFrame with solar position/radiation data based on a clear sky model. DataFrame must have datetime index. Note that the isinstance checks have played up in the past."""
+        df['time_adjusted'] = df.index.map(lambda x: self.adjust_time(pytz.timezone('UTC').localize(x.to_pydatetime())))
+        df['ecliptic'] = df.apply(lambda x: EclipticCoordinate(x.time_adjusted), axis = 1)
+        df['lmst'] = df.apply(lambda x: self.local_mean_siderial_time(x.ecliptic.gmst), axis = 1)
+        df['hour_angle'] = df.apply(lambda x: self.hour_angle(x.lmst, x.ecliptic.ra), axis = 1)
+        df['elevation_angle'] = df.apply(lambda x: self.elevation_angle(x.ecliptic.decrad, x.hour_angle), axis = 1)
+        df['zenith'] = df.apply(lambda x: self.zenith_angle(x.ecliptic.decrad, x.hour_angle), axis = 1)
+        df['azimuth'] = df.apply(lambda x: self.azimuth_angle(x.elevation_angle, x.ecliptic.decrad, x.hour_angle), axis = 1)
+        df['mean_et_rad'] = df.apply(lambda x: mean_extraterrestrial_radiation(x.ecliptic.dt), axis = 1)
+        if isinstance(self, SolarConfig):
+            df['angle_of_incidence'] = df.apply(lambda x: self.angle_of_incidence(x.zenith, x.azimuth, x.ecliptic.decrad, x.hour_angle), axis = 1)
+            df['et_radiation'] = df.apply(lambda x: incident_radiation(x.mean_et_rad, x.angle_of_incidence), axis = 1)                    
+        elif isinstance(self, Position):
+            df['et_radiation'] = df.apply(lambda x: incident_radiation(x.mean_et_rad, x.zenith), axis = 1)
+        else:
+            print("Not a SolarConfig or Position variable, please ensure class is appropriate.")
+
+
+    def get_clearsky(self, date):
+        """Get the clearsky inforamtion for a single point return as a dictionary input datetime.datetime."""
+        ecliptic = EclipticCoordinate(date)
+        lmst = self.local_mean_siderial_time(ecliptic.gmst)
+        hour_angle = self.hour_angle(lmst, ecliptic.ra)
+        elevation_angle = self.elevation_angle(ecliptic.decrad, hour_angle)
+        zenith_angle = self.zenith_angle(ecliptic.decrad, hour_angle)
+        azimuth =  self.azimuth_angle(elevation_angle, ecliptic.decrad, hour_angle)
+        mean_et_rad = mean_extraterrestrial_radiation(ecliptic.dt)
+        if isinstance(self, SolarConfig):
+            angle_of_incidence = self.angle_of_incidence(zenith_angle, azimuth, ecliptic.decrad, hour_angle)
+            et_radiation = incident_radiation(mean_et_rad, angle_of_incidence)
+            info = {'ecliptic': ecliptic, 'lmst': lmst, 'hour_angle': math.degrees(hour_angle), 'elevation_angle': math.degrees(elevation_angle), 'zenith_angle': math.degrees(zenith_angle), 'azimuth_angle': math.degrees(azimuth), 'angle_of_incidence': math.degrees(angle_of_incidence), 'et_radiation': et_radiation}
+
+        elif isinstance(self, Position):
+            et_radiation = incident_radiation(mean_extraterrestrial_radiation(ecliptic.dt), zenith_angle)
+            info = {'ecliptic': ecliptic, 'lmst': lmst, 'hour_angle': math.degrees(hour_angle), 'elevation_angle': math.degrees(elevation_angle), 'zenith_angle': math.degrees(zenith_angle), 'azimuth_angle': math.degrees(azimuth), 'et_radiation': et_radiation}
+        else:
+            print("Not a SolarConfig or Position variable, please ensure class is appropriate.")
+
+        return(info)
+
+    
+    def checktype(self):
+        """This function prints the object class. It is useful to check if the Position/SolarConfig object is behaving properly. If it stops working you can usually fix the problem by reinstallising the Position/SolarConfig object."""
+        print('auto')
+        if isinstance(self, SolarConfig):
+            print("SolarConfig", type(self))
+            
+        elif isinstance(self, Position):
+            print("Position", type(self))
+            
+        else:
+            print("Not a Position/SolarConfig class")
+            
         
-        return(dsloc.to_dataframe())
-    
-    
     
     
 class SolarConfig(Position):
     """SolarConfig is a subclass of Position. It contains orientation attributes in addition to latitude and longitude. Methods will determine the angle of incidence etc.
-    Azimuth Angle between north and the base of the panel with 0 facing West."""
+    Surface Azimuth of 0 for north facing and 180 for south facing.."""
     
     def __init__(self, latitude, longitude, slope, surface_azimuth):
         Position.__init__(self,latitude, longitude)
-        self.slop = slope
+        self.slope = slope
         self.surface_azimuth = surface_azimuth
     
-    def angle_of_incidence(self, zenith_angle, azimuth_angle):
-        a = math.sin(zenith_angle)*math.cos(math.radians(self.surface_azimuth)- azimuth_angle)*math.sin(radians(self.slope))+math.cos(zenith_angle)*math.cos(math.radians(self.slope))
+    def angle_of_incidence(self, zenith_angle, azimuth_angle, declination, hour_angle):
+        """Calculates angle of incidence based to the collector."""
+        sunrise = self.sunrise_hour_angle(declination)
+
+        #if the sun is down then 0 incident angle (shadow of earth).
+        if abs(hour_angle)>abs(sunrise):
+            return(math.pi)
+
+
+        a = math.sin(zenith_angle)*math.cos(math.radians(self.surface_azimuth)- azimuth_angle)*math.sin(math.radians(self.slope))+math.cos(zenith_angle)*math.cos(math.radians(self.slope))
         
         if a<-1:
             return (math.pi)
@@ -314,10 +408,11 @@ class SolarConfig(Position):
         elif (-1<=a<=1):
             return math.acos(a)
         
-    def HDKR_diffuse_radiation(self, angle_of_incidence, zenith_angle, extraterrestiral_irradiance, Eb, Ed, albedo = 0):
+    def hdkr_planeofarray_radiation(self, angle_of_incidence, zenith_angle, mean_et_rad, Eb, Eg, albedo = 0):
         """Calculates the diffuse radiation based on the Hay, Davies, Klucher and Reindl model. Including the reflectance which is initialised at zero (albedo). Parameters use are named after those in NREL.
         Ibh : Incident beam irradiadiance on "Plane of Array".
         Igh : Total irradiance on "Plane of Array".
+        Eg  : Total horizontal irradiance (ghi)
         Eb : Beam horizontal irradiance (measured).
         Ed : Diffuse horizontal irradiance (measured).
         Rb : Ratio of beam incident to "Plane of Array" to horizontal beam.
@@ -326,37 +421,53 @@ class SolarConfig(Position):
         s : Horison brightening correction factor.
         
         Note that the isohor term contains both isotropic and horizonal brightening iso*(1+x)."""
-        
+        if (Eb <= 0) or (Eg <= 0):
+            return None
+
+
+        H = max(mean_et_rad*math.cos(zenith_angle),0)
+
+        Ed = max(Eg - Eb*math.cos(zenith_angle), 0)
+
         Ibh = Eb*math.cos(zenith_angle)
-        
+        if Ibh > mean_et_rad:
+            print('Beam irradiance (Ibh) > mean extraterrestrial radiation (H)')
+            return (None)
+
+
         Igh = Ibh + Ed
-        
+
         Rb = math.cos(angle_of_incidence)/math.cos(zenith_angle)
         
-        Ai = Ibh/extraterrestrial_irradiance
+        Ai = Ibh/H
         
+        if (Igh <= 0) or (Ibh <= 0):
+            return None
+
         f = math.sqrt(Ibh/Igh)
         
-        s = (math.sin(self.slope/2))**3
+        s = (math.sin(math.radians(self.slope)/2))**3
         
-        cir = Ed*Ai*Rb
-        iso = Ed*(1-Ai)*(1+math.cos(self.slope))/2
+        cir = max(Ed*Ai*Rb, 0)
+        iso = Ed*(1-Ai)*(1+math.cos(math.radians(self.slope)))/2
         isohor = iso*(1+f*s)
         
         #Ground reflected diffuse (albedo is ground reflectance, if not provided = 0)
-        Ir = albedo*(Igh)*(1-math.cos(self.slope))/2
+        Ir = albedo*(Igh)*(1-math.cos(math.radians(self.slope)))/2
         
-        return (isohor+cir+Ir)
-    
-    
-    
-     
-    
-    
+        #POA beam radiation
+        Ib = max(Eb*math.cos(angle_of_incidence), 0)
+        hdkr = {'Beam': Ib,
+                'Isentropic' : iso,
+                'Horisonal' : isohor,
+                'Circumsolar' : cir,
+                'Ground_reflected': Ir,
+                'Total_POA' : (Ib + isohor + cir + Ir)}
+        return (hdkr['Total_POA'])
+
+    def hdkr_df(self, df):
+        df['hdkr_radiation'] = df.apply(lambda x: self.hdkr_planeofarray_radiation(x.angle_of_incidence, x.zenith, x.mean_et_rad, x.dni, x.ghi), axis = 1)
 
 
-    
 
-    
 
-        
