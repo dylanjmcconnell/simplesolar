@@ -6,7 +6,21 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import pytz
 import types
+import progressbar
+import os
 
+
+def get_files(mypath):
+    """Returns a list of files that have filenames starting with "firstnine" as list of lists [fullpath, filename]."""
+    fileinfo = []
+    print("Getting file list.")
+    for root, dirs, files in os.walk(mypath, topdown = False):
+        for name in files:
+            if name[-2:] == 'nc':
+                fileinfo.append(os.path.join(root,name))
+    
+    fileinfo.sort()
+    return (fileinfo[:])
 
 #Functions relating to radiation
 
@@ -267,10 +281,11 @@ class Position(object):
         elif (-1<a<1):
             return(math.acos(a))
     
-    def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/*.nc'):
+    def get_radiation_data(self, no_files, path = '/data/marble/sandbox/jsilberstein/*.nc'):
         """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
         print(str(datetime.datetime.now()),"Reading netCDF files.")
-        radiation_data = xr.open_mfdataset(path, concat_dim = 'time')
+        files = get_files(path)[:no_files]
+        radiation_data = xr.open_mfdataset(files, concat_dim = 'time')
         print(str(datetime.datetime.now()),"Selecting data.")
         dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
         print(str(datetime.datetime.now()), "Converting to dataframe.")
