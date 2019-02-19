@@ -267,12 +267,15 @@ class Position(object):
         elif (-1<a<1):
             return(math.acos(a))
     
-    def get_radiation_data(self, path = '/data/marble/jsilberstein/*.nc'):
+    def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/*.nc'):
         """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
+        print(str(datetime.datetime.now()),"Reading netCDF files.")
         radiation_data = xr.open_mfdataset(path, concat_dim = 'time')
+        print(str(datetime.datetime.now()),"Selecting data.")
         dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
+        print(str(datetime.datetime.now()), "Converting to dataframe.")
         df = dsloc.to_dataframe()
-
+        print(str(datetime.datetime.now()), "Closing files.")
         radiation_data.close()
         return (df)
 
