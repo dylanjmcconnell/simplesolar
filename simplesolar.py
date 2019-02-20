@@ -13,16 +13,11 @@ import os
 def get_files(mypath):
     """Returns a list of files that have filenames starting with "firstnine" as list of lists [fullpath, filename]."""
     fileinfo = []
-    block = []
-    print("Getting file list.")
     for root, dirs, files in os.walk(mypath, topdown = False):
         for name in files:
             if name[-2:] == 'nc':
-                block.append(os.path.join(root,name))
-                if len(block) == 25:
-                    fileinfo.append(block)
-                    block = []
-    fileinfo.append(block)
+                fileinfo.append(os.path.join(root,name))
+
     return (fileinfo)
 
 #Functions relating to radiation
@@ -286,17 +281,14 @@ class Position(object):
     
     def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/'):
         """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
-        print(str(datetime.datetime.now()),"Reading netCDF files.")
         files = get_files(path)
         df_list = []
         for file in progressbar.progressbar(files):
-            radiation_data = xr.open_mfdataset(files, concat_dim = 'time')
-            print(str(datetime.datetime.now()),"Selecting data.")
+            radiation_data = xr.open_dataset(file)
             dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
-            print(str(datetime.datetime.now()), "Converting to dataframe.")
             temp_df = dsloc.to_dataframe()
             radiation_data.close()
-            dfs.append(temp_df)
+            df_list.append(temp_df)
 
         df = pd.concat(df_list)        
         return (df)
