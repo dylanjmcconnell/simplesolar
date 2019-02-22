@@ -1,0 +1,15 @@
+channels:
+  - conda-forge
+  - defaults
+
+
+dependencies:
+  - python
+  - scipy
+  - xarray
+  - pynco
+  - ipython
+  - matplotlib
+  - pip:
+    - netcdf4
+    - progressbar2
