@@ -16,8 +16,7 @@ def get_files(mypath):
     for root, dirs, files in os.walk(mypath, topdown = False):
         for name in files:
             if name[-2:] == 'nc':
-                fileinfo.append(os.path.join(root,name))
-
+                fileinfo.append([os.path.join(root,name), name])
     return (fileinfo)
 
 #Functions relating to radiation
@@ -279,18 +278,15 @@ class Position(object):
         elif (-1<a<1):
             return(math.acos(a))
     
-    def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/'):
+    def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/*.nc'):
         """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
-        files = get_files(path)
-        df_list = []
-        for file in progressbar.progressbar(files):
-            radiation_data = xr.open_dataset(file)
-            dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
-            temp_df = dsloc.to_dataframe()
-            radiation_data.close()
-            df_list.append(temp_df)
 
-        df = pd.concat(df_list)        
+        radiation_data = xr.open_mfdataset(path)
+        dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
+        print(datetime.datetime.now())
+        df = dsloc.to_dataframe()
+        radiation_data.close()
+        print(datetime.datetime.now())
         return (df)
 
     def adjust_time(self, index_dt):
