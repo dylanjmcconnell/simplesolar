@@ -15,6 +15,16 @@ def get_files(mypath):
                 fileinfo.append([os.path.join(root,name),name])
     return (fileinfo)
 
+
 def transpose_netcdf(path = '/data/marble/sandbox/jsilberstein/', target = '/data/marble/sandbox/jsilberstein/transposed/'):
 	for file in progressbar.progressbar(get_files(path)):
 		nco.ncpdq(input = file[0], output = '{}{}'.format(target,file[1]), arrange = ['latitude', 'longitude','time'])
+
+# def combine_netcdf(path = '/data/marble/sandbox/jsilberstein/transposed/'):
+	# for year in files:
+	# nco.ncrcat()
+
+def convert_time_to_double(path = '/data/marble/sandbox/jsilberstein/', target = '/data/marble/sandbox/jsilberstein/timedouble/'):
+	for file in progressbar.progressbar(get_files(path)):
+		nco.ncap2(options= ['-O','-s','time=time.double()'], input =  file[0], output = '{}dbl_tm_{}'.format(target,file[1])) 
+
