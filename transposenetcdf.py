@@ -13,6 +13,7 @@ def get_files(mypath):
     	for name in files:
     		if name[-2:] == 'nc':
     			fileinfo.append([os.path.join(root,name), name])
+    fileinfo.sort()
     return (fileinfo)
 
 
@@ -32,13 +33,12 @@ def concat_files(path = '/data/marble/sandbox/jsilberstein/timedouble/', target 
 	year_lists = []
 	year = []
 	files = get_files(path)
-	print (files)
 	for x in files:
 		year.append(x[0])
-		if x[1][-5:-3] == 12:
+		if x[1][-5:-3] == '12':
 			year_lists.append(year)
 			year = []
-	# for x in progressbar.progressbar(year_lists):
-	# 	nco.ncrcat(input = x, output = '{}radiation_{}.nc'.format(target, x[1][-9:-5]))
+	#for x in progressbar.progressbar(year_lists):
+	#	nco.ncrcat(input = x, output = '{}radiation_{}.nc'.format(target, x[1][-9:-5]))
 
 	return year_lists 
