@@ -278,7 +278,7 @@ class Position(object):
         elif (-1<a<1):
             return(math.acos(a))
     
-    def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/*.nc'):
+    def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/yearstransposed/*.nc'):
         """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
 
         radiation_data = xr.open_mfdataset(path)
@@ -482,5 +482,14 @@ class SolarConfig(Position):
         df['hdkr_radiation'] = df.apply(lambda x: self.hdkr_planeofarray_radiation(x.angle_of_incidence, x.zenith, x.mean_et_rad, x.dni, x.ghi), axis = 1)
 
 
+"""compare with output from actual solar plants.
+    write up whats been done.
+    data descriptor paper:
+        software x
+        describe how the data has been handled
 
 
+    Open NEM:   generator registry
+                expand to WA
+
+    Open SEM:
