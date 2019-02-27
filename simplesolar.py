@@ -482,14 +482,3 @@ class SolarConfig(Position):
         df['hdkr_radiation'] = df.apply(lambda x: self.hdkr_planeofarray_radiation(x.angle_of_incidence, x.zenith, x.mean_et_rad, x.dni, x.ghi), axis = 1)
 
 
-"""compare with output from actual solar plants.
-    write up whats been done.
-    data descriptor paper:
-        software x
-        describe how the data has been handled
-
-
-    Open NEM:   generator registry
-                expand to WA
-
-    Open SEM:
