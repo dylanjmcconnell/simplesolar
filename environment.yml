@@ -10,6 +10,7 @@ dependencies:
   - pynco
   - ipython
   - matplotlib
+  - dask
   - pip:
     - netcdf4
     - progressbar2
