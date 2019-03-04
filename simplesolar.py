@@ -21,12 +21,6 @@ def get_files(mypath):
 
 #Functions relating to radiation
 
-def test_melb():
-    loc = Position(-37, 144)
-    con = SolarConfig(-37, 144, 25, 0)
-    df = loc.get_radiation_data('Users/felixsilberstein/Desktop/sandbox/*.nc')
-    return (df)
-
 
 def mean_extraterrestrial_radiation(datetime):
     """Extraterrestrial radiation incident on a plane normal to the radiation. Eq. 1.4.1b Duffie and Beckman."""
@@ -50,8 +44,6 @@ def incident_radiation(radiation, angle_of_incidence):
         return radiation
     else:
         return 0
-
-
     
     
 #Functions relating to the angle of the sun
@@ -74,12 +66,16 @@ def refraction_corrected_elevation(elevation_angle):
 
 class EclipticCoordinate(object):
     """Ecliptic coordinate of the sun apparent to the earth.
+        Datetime - dt (datetime.datetime)
+        julian - julian (decimal day)
         Mean Longitude - mnlong (deg)
         Mean Anomaly - mnanom (rad)
-        Ecliptic Longitude (rad)
-        Obliquity (rad)
-        Right Ascension (rad)
-        Declination Angle (rad)
+        Ecliptic Longitude - eclong (rad)
+        Obliquity  - obleq (rad)
+        Right Ascension - ra (rad)
+        Declination Angle - decrad (rad)
+        Equation of time - eot
+
         """
     
     def __init__(self, dt):
@@ -95,7 +91,7 @@ class EclipticCoordinate(object):
         self.eot = self.set_equation_of_time()
         
     def __str__(self):
-        return "dt = {}, julian = {}, decrad = {}".format(self.dt, self.julian, self.decrad)
+        return "{}".format(self.dt)
     
     def julian(self):
         """Finds the julian date based on the SAM Photovoltaic Model Techinical Reference Update, Paul Gilman, Aron Dobos, Nicholas DiOrio, Janine Freeman, Steven Janzou, and David Ryberg, of National Renewable Energy Laboratory. March 2018. After Michalsky 1988."""
@@ -202,7 +198,6 @@ class Position(object):
     def __str__(self):
         return "{0},{1}".format(self.lat, self.lon)
     
-    #Time related methods
     
     def local_mean_siderial_time(self, gmst):
         """Calculates the siderial time at the local position from Greenwich Mean Siderial Time, and the longitude (see NREL, Michalsky, Walraven)."""
@@ -225,7 +220,6 @@ class Position(object):
         
         return(b)
     
-    #Methods for solar position relative to the point lat/long.
     
     def elevation_angle(self, declination, hour_angle):
         """Determines the elevation angle based on inputs. Radians"""
@@ -263,8 +257,6 @@ class Position(object):
             return(math.pi-b)
         elif (0<hour_angle) and (hour_angle<math.pi):
             return (math.pi+b)
-        
-    #Methods for sunrise/sunset    
     
     def sunrise_hour_angle(self, declination):
         """Returns the hour angle at sunrise/sunset. If there is no sunrise/sunset. Returns 0 if the sun is down all day, pi if the sun is up all day."""
@@ -278,16 +270,32 @@ class Position(object):
         elif (-1<a<1):
             return(math.acos(a))
     
-    def get_radiation_data(self, path = '/data/marble/sandbox/jsilberstein/yearstransposed/*.nc'):
+    def get_radiation_data(self, timefrom, timeto, path = '/data/marble/sandbox/jsilberstein/yearstransposed/*.nc'):
         """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
 
         radiation_data = xr.open_mfdataset(path)
         dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
+        ds = dsloc.sel(time = slice(timefrom, timeto))
         print(datetime.datetime.now())
-        df = dsloc.to_dataframe()
+        df = ds.to_dataframe()
         radiation_data.close()
         print(datetime.datetime.now())
         return (df)
+
+    def save_radiation_data(self, timefrom, timeto, output_path, path = '/data/marble/sandbox/jsilberstein/yearstransposed/*.nc'):
+        """Gets all avaliable solar data at the location path for the location from the nearest location. Returns it as dataframe."""
+
+        radiation_data = xr.open_mfdataset(path)
+        dsloc = radiation_data.sel(longitude=self.lon, latitude=self.lat, method='nearest')
+        ds = dsloc.sel(time = slice(timefrom, timeto))
+        print(datetime.datetime.now())
+        df = ds.to_dataframe()
+        radiation_data.close()
+        df['time_adjusted'] = df.index.map(lambda x: self.adjust_time(pytz.timezone('UTC').localize(x.to_pydatetime())))
+        df.to_csv('{0}{1}_{2}_{3}_{4}'.format(output_path, self.lat, self.lon, timefrom, timeto))
+        print(datetime.datetime.now())
+        return ()
+
 
     def adjust_time(self, index_dt):
         """Adds column to data frame refering to a timestamp that is adjusted for the satelite delay. Refer to BoM meta data document"""
@@ -402,6 +410,9 @@ class SolarConfig(Position):
         Position.__init__(self,latitude, longitude)
         self.slope = slope
         self.surface_azimuth = surface_azimuth
+
+    def __str__(self):
+        return "{},{},{},{}".format(self.lat, self.lon, self.slope, self.surface_azimuth)
     
     def angle_of_incidence(self, zenith_angle, azimuth_angle, declination, hour_angle):
         """Calculates angle of incidence based to the collector."""
