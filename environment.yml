@@ -2,7 +2,6 @@ channels:
   - conda-forge
   - defaults
 
-
 dependencies:
   - python
   - scipy
@@ -11,6 +10,7 @@ dependencies:
   - ipython
   - matplotlib
   - dask
+  - jupyter
   - pip:
     - netcdf4
     - progressbar2
