@@ -354,14 +354,8 @@ class Position(object):
         df['elevation_angle'] = df.apply(lambda x: self.elevation_angle(x.ecliptic.decrad, x.hour_angle), axis = 1)
         df['zenith'] = df.apply(lambda x: self.zenith_angle(x.ecliptic.decrad, x.hour_angle), axis = 1)
         df['azimuth'] = df.apply(lambda x: self.azimuth_angle(x.elevation_angle, x.ecliptic.decrad, x.hour_angle), axis = 1)
-        df['mean_et_rad'] = df.apply(lambda x: mean_extraterrestrial_radiation(x.ecliptic.dt), axis = 1)
-        if isinstance(self, SolarConfig):
-            df['angle_of_incidence'] = df.apply(lambda x: self.angle_of_incidence(x.zenith, x.azimuth, x.ecliptic.decrad, x.hour_angle), axis = 1)
-            df['et_radiation'] = df.apply(lambda x: incident_radiation(x.mean_et_rad, x.angle_of_incidence), axis = 1)                    
-        elif isinstance(self, Position):
-            df['et_radiation'] = df.apply(lambda x: incident_radiation(x.mean_et_rad, x.zenith), axis = 1)
-        else:
-            print("Not a SolarConfig or Position variable, please ensure class is appropriate.")
+        df['mean_et_rad'] = df.apply(lambda x: mean_extraterrestrial_radiation(x.ecliptic.dt), axis = 1)              
+        df['et_radiation'] = df.apply(lambda x: incident_radiation(x.mean_et_rad, x.zenith), axis = 1)
 
 
     def get_clearsky(self, date):
@@ -490,6 +484,7 @@ class SolarConfig(Position):
         return (hdkr['Total_POA'])
 
     def hdkr_df(self, df):
+        df['angle_of_incidence'] = df.apply(lambda x: self.angle_of_incidence(x.zenith, x.azimuth, x.ecliptic.decrad, x.hour_angle), axis = 1)
         df['hdkr_radiation'] = df.apply(lambda x: self.hdkr_planeofarray_radiation(x.angle_of_incidence, x.zenith, x.mean_et_rad, x.dni, x.ghi), axis = 1)
 
 
